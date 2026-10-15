@@ -1,5 +1,9 @@
 import { defineProperties } from "figma:shaders"
 
+// Ambient Glare — continuous blue/pink/orange scan with a final-only ease-out.
+// Author: haim repael azoulay
+// Copyright (c) 2026 haim repael azoulay. All rights reserved.
+
 export default function Effect() {}
 
 export function setup(device, frame) {
@@ -26,8 +30,9 @@ fn gaussian(x: f32, width: f32) -> f32 {
   // The wash and horizontal ribbons intentionally follow target proportions.
   let p = (v.uv-vec2f(0.5))*vec2f(440.0,52.0);
   let prog = u.motion.x;
-  let ignition = smoothstep(0.07,0.18,prog)*(1.0-smoothstep(0.76,0.96,prog));
-  let travel = smoothstep(0.19,0.64,prog);
+  // Ignition overlaps travel; there are no stationary phase boundaries.
+  let ignition = min(prog/0.06,1.0)*(1.0-smoothstep(0.86,1.0,prog));
+  let travel = prog;
   let flareX = mix(440.0*0.48,-440.0*0.45,travel);
   let gx = p.x-flareX;
   let soft = u.motion.w;
@@ -36,7 +41,7 @@ fn gaussian(x: f32, width: f32) -> f32 {
   let wake = smoothstep(flareX-glowWidth,flareX+glowWidth,p.x);
   let wash = (band*0.5+wake*0.60)*ignition;
   let ribbon = gaussian(abs(p.y)-26.0,2.0+soft*2.2)*band*ignition;
-  let warm = smoothstep(0.53,0.63,prog)*(1.0-smoothstep(0.67,0.79,prog));
+  let warm = gaussian(prog-0.89,0.10);
   let cool = u.blue.rgb*u.blue.a;
   let rose = u.pink.rgb*u.pink.a;
   let amber = u.orange.rgb*u.orange.a;
@@ -69,10 +74,13 @@ export function render(device, frame) {
   if (p.playback) {
     var elapsed = Math.max(0,frame.time*0.001);
     var duration = Math.max(0.2,p.duration);
-    var cycle = duration+Math.max(0,p.pause);
-    var t = p.loop ? elapsed%cycle : Math.min(elapsed,cycle);
+    var t = p.loop ? elapsed%duration : Math.min(elapsed,duration);
     progress = Math.min(t/duration,1);
   }
+  // One continuous trajectory: constant velocity, then a final-only ease-out.
+  // Integrate a linear velocity ramp over the last 20%, normalized to end at 1.
+  var ending = Math.max(0,(progress-0.8)/0.2);
+  progress = (progress-0.1*ending*ending)/0.9;
   if (p.reverse) progress = 1-progress;
   var blue = p.blue;
   var pink = p.pink;
@@ -108,8 +116,7 @@ export function render(device, frame) {
 defineProperties(Effect, {
   playback:{type:"boolean",label:"Play animation",defaultValue:true},
   progress:{type:"number",label:"Progress (when paused)",defaultValue:0,control:"slider",min:0,max:1,step:0.001},
-  duration:{type:"number",label:"Cycle duration",defaultValue:4.5,control:"slider",min:0.5,max:20,step:0.1,unit:"s"},
-  pause:{type:"number",label:"Pause between cycles",defaultValue:1,control:"slider",min:0,max:10,step:0.1,unit:"s"},
+  duration:{type:"number",label:"Cycle duration",defaultValue:2,control:"slider",min:0.5,max:20,step:0.1,unit:"s"},
   loop:{type:"boolean",label:"Loop",defaultValue:true},
   reverse:{type:"boolean",label:"Reverse",defaultValue:false},
   glowWidth:{type:"number",label:"Glow width",defaultValue:68,control:"slider",min:8,max:220,step:1},
